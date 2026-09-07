@@ -4,9 +4,9 @@ export declare class ProfileResolver {
     private readonly profileService;
     constructor(profileService: ProfileService);
     getProfile(locale: string): Promise<{
+        name: string;
         id: string;
         locale: string;
-        name: string;
         title: string;
         description: string;
         location: string | null;
@@ -19,8 +19,8 @@ export declare class ProfileResolver {
         updatedAt: Date;
     } | null>;
     skills(profile: Profile): Promise<{
-        id: string;
         name: string;
+        id: string;
         createdAt: Date;
         category: string | null;
         profileId: string;
@@ -35,8 +35,8 @@ export declare class ProfileResolver {
         achievements: string[];
     }[]>;
     projects(profile: Profile): Promise<{
-        id: string;
         name: string;
+        id: string;
         description: string | null;
         createdAt: Date;
         profileId: string;

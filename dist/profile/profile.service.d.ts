@@ -1,11 +1,14 @@
 import { PrismaService } from '../prisma/prisma.service';
 export declare class ProfileService {
     private readonly prisma;
+    private readonly cache;
+    private readonly ttlMs;
     constructor(prisma: PrismaService);
+    private cached;
     findByLocale(locale?: string): Promise<{
+        name: string;
         id: string;
         locale: string;
-        name: string;
         title: string;
         description: string;
         location: string | null;
@@ -18,8 +21,8 @@ export declare class ProfileService {
         updatedAt: Date;
     } | null>;
     getSkills(profileId: string): Promise<{
-        id: string;
         name: string;
+        id: string;
         createdAt: Date;
         category: string | null;
         profileId: string;
@@ -34,8 +37,8 @@ export declare class ProfileService {
         achievements: string[];
     }[]>;
     getProjects(profileId: string): Promise<{
-        id: string;
         name: string;
+        id: string;
         description: string | null;
         createdAt: Date;
         profileId: string;

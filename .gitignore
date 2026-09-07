@@ -1,5 +1,23 @@
-node_modules
+# Compiled output
+dist/
+build/
 
-/src/generated/prisma
+# Dependencies
+node_modules/
 
+# Generated Prisma Client
+src/generated/prisma/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

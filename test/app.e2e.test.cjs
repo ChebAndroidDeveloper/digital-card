@@ -1,0 +1,111 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { Test } = require('@nestjs/testing');
+const request = require('supertest');
+const { AppModule } = require('../dist/app.module');
+const { PrismaService } = require('../dist/prisma/prisma.service');
+const { ProfileService } = require('../dist/profile/profile.service');
+const { configureHttpSecurity, RequestLimiter } = require('../dist/common/http-security');
+const { getIntrospectionQuery } = require('graphql');
+
+test('real HTTP GraphQL pipeline with mocked database', async (t) => {
+  const previousEnv = process.env.NODE_ENV;
+  const previousProxy = process.env.TRUSTED_PROXIES;
+  process.env.NODE_ENV = 'production';
+  delete process.env.TRUSTED_PROXIES;
+  let profileCalls = 0;
+  let skillCalls = 0;
+  const prisma = {
+    profile: { findFirst: async ({ where }) => {
+      profileCalls++;
+      if (where.locale === 'ru') throw new Error('PRIVATE_DATABASE_HOST:5432');
+      return { id: 'p1', locale: 'en', name: 'Test' };
+    } },
+    skill: { findMany: async () => {
+      skillCalls++;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return [{ id: 's1', name: 'TypeScript' }];
+    } },
+  };
+  let app;
+  try {
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PrismaService).useValue(prisma).compile();
+    app = module.createNestApplication({ logger: false });
+    configureHttpSecurity(app);
+    await app.init();
+    const send = (query) => request(app.getHttpServer()).post('/graphql').send({ query });
+
+    await t.test('concurrent field aliases share a pending database request', async () => {
+      const result = await send('{ profile { name a: skills { name } b: skills { name } } }');
+      assert.equal(result.status, 200);
+      assert.equal(result.body.errors, undefined);
+      assert.deepEqual(result.body.data.profile.a, result.body.data.profile.b);
+      assert.equal(profileCalls, 1);
+      assert.equal(skillCalls, 1);
+    });
+    await t.test('internal errors are masked by the actual Apollo adapter', async () => {
+      const result = await send('{ profile(locale: "ru") { name } }');
+      assert.equal(result.body.errors[0].message, 'Internal server error');
+      assert.deepEqual(result.body.errors[0].path, ['profile']);
+      assert.equal(JSON.stringify(result.body).includes('PRIVATE_DATABASE_HOST'), false);
+      assert.equal(result.body.errors[0].extensions.stacktrace, undefined);
+    });
+    await t.test('syntax errors remain actionable', async () => {
+      const result = await send('{');
+      assert.equal(result.body.errors[0].extensions.code, 'GRAPHQL_PARSE_FAILED');
+    });
+    await t.test('expanded fragments exceed budget before resolver execution', async () => {
+      const before = profileCalls;
+      const result = await send(`{ profile { ${'...Fields '.repeat(260)} } } fragment Fields on Profile { name }`);
+      assert.equal(result.body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED');
+      assert.equal(profileCalls, before);
+    });
+    await t.test('Sandbox introspection still fits the budget', async () => {
+      const result = await send(getIntrospectionQuery());
+      assert.equal(result.body.errors, undefined);
+      assert.ok(result.body.data.__schema);
+    });
+    await t.test('changing forwarded headers cannot bypass the HTTP limit', async () => {
+      let limited;
+      for (let i = 0; i < 101; i++) {
+        const result = await request(app.getHttpServer()).post('/graphql')
+          .set('X-Forwarded-For', `198.51.100.${i}`).send({ query: '{ __typename }' });
+        if (result.status === 429) { limited = result; break; }
+      }
+      assert.ok(limited);
+      assert.equal(limited.body.errors[0].extensions.code, 'TOO_MANY_REQUESTS');
+      assert.ok(Number(limited.headers['retry-after']) > 0);
+    });
+  } finally {
+    if (app) await app.close();
+    if (previousEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnv;
+    if (previousProxy === undefined) delete process.env.TRUSTED_PROXIES;
+    else process.env.TRUSTED_PROXIES = previousProxy;
+  }
+});
+
+test('limiter expires records and fails closed at capacity', () => {
+  const limiter = new RequestLimiter(2, 1000, 2);
+  assert.equal(limiter.consume('a', 0), 0);
+  assert.equal(limiter.consume('a', 0), 0);
+  assert.equal(limiter.consume('a', 0), 1);
+  assert.equal(limiter.consume('b', 0), 0);
+  assert.equal(limiter.consume('c', 0), 1);
+  assert.equal(limiter.consume('c', 1000), 0);
+  assert.equal(limiter.consume('a', 1000), 0);
+});
+
+test('failed cached requests can retry, unsupported locales never hit the database', async () => {
+  let calls = 0;
+  const service = new ProfileService({ profile: { findFirst: async () => {
+    calls++;
+    if (calls === 1) throw new Error('temporary');
+    return { id: 'p1' };
+  } } });
+  await assert.rejects(service.findByLocale('en'));
+  assert.deepEqual(await service.findByLocale('en'), { id: 'p1' });
+  assert.equal(await service.findByLocale('unsupported'), null);
+  assert.equal(calls, 2);
+});

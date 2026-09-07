@@ -11,9 +11,10 @@ const common_1 = require("@nestjs/common");
 const graphql_1 = require("@nestjs/graphql");
 const apollo_1 = require("@nestjs/apollo");
 const default_1 = require("@apollo/server/plugin/landingPage/default");
-const path_1 = require("path");
+const query_budget_1 = require("./common/query-budget");
 const prisma_module_1 = require("./prisma/prisma.module");
 const profile_module_1 = require("./profile/profile.module");
+const format_graphql_error_1 = require("./common/format-graphql-error");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -24,11 +25,13 @@ exports.AppModule = AppModule = __decorate([
             profile_module_1.ProfileModule,
             graphql_1.GraphQLModule.forRoot({
                 driver: apollo_1.ApolloDriver,
-                autoSchemaFile: (0, path_1.join)(process.cwd(), 'src/schema.gql'),
+                autoSchemaFile: true,
+                validationRules: [query_budget_1.queryBudget],
                 sortSchema: true,
                 playground: false,
                 plugins: [(0, default_1.ApolloServerPluginLandingPageLocalDefault)()],
                 introspection: true,
+                formatError: format_graphql_error_1.formatGraphQLError,
             }),
         ],
     })

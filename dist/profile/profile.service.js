@@ -14,37 +14,52 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
 let ProfileService = class ProfileService {
     prisma;
+    cache = new Map();
+    ttlMs = 60_000;
     constructor(prisma) {
         this.prisma = prisma;
     }
+    cached(key, load) {
+        const now = Date.now();
+        const entry = this.cache.get(key);
+        if (entry && entry.expiresAt > now)
+            return entry.value;
+        for (const [oldKey, oldEntry] of this.cache) {
+            if (oldEntry.expiresAt <= now)
+                this.cache.delete(oldKey);
+        }
+        const next = { value: Promise.resolve().then(load), expiresAt: Infinity };
+        if (this.cache.size >= 256)
+            return next.value;
+        this.cache.set(key, next);
+        void next.value.then(() => { next.expiresAt = Date.now() + this.ttlMs; }, () => { if (this.cache.get(key) === next)
+            this.cache.delete(key); });
+        return next.value;
+    }
     async findByLocale(locale = 'en') {
-        return this.prisma.profile.findFirst({
-            where: { locale },
-        });
+        if (locale !== 'en' && locale !== 'ru')
+            return null;
+        return this.cached(`profile:${locale}`, () => this.prisma.profile.findFirst({ where: { locale } }));
     }
-    async getSkills(profileId) {
-        return this.prisma.skill.findMany({
-            where: { profileId },
-            orderBy: { category: 'asc' },
-        });
+    getSkills(profileId) {
+        return this.cached(`skills:${profileId}`, () => this.prisma.skill.findMany({
+            where: { profileId }, orderBy: [{ category: 'asc' }, { name: 'asc' }],
+        }));
     }
-    async getExperience(profileId) {
-        return this.prisma.experience.findMany({
-            where: { profileId },
-            orderBy: { createdAt: 'asc' },
-        });
+    getExperience(profileId) {
+        return this.cached(`experience:${profileId}`, () => this.prisma.experience.findMany({
+            where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }));
     }
-    async getProjects(profileId) {
-        return this.prisma.project.findMany({
-            where: { profileId },
-            orderBy: { createdAt: 'asc' },
-        });
+    getProjects(profileId) {
+        return this.cached(`projects:${profileId}`, () => this.prisma.project.findMany({
+            where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }));
     }
-    async getEducation(profileId) {
-        return this.prisma.education.findMany({
-            where: { profileId },
-            orderBy: { createdAt: 'asc' },
-        });
+    getEducation(profileId) {
+        return this.cached(`education:${profileId}`, () => this.prisma.education.findMany({
+            where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }));
     }
 };
 exports.ProfileService = ProfileService;
