@@ -152,7 +152,7 @@ async function main() {
       create: [
         {
           institution: 'SkillBox',
-          year: '2024',
+          year: '2023',
           faculty: 'Computer Science, Android Development',
         },
       ],
@@ -264,7 +264,7 @@ async function main() {
       create: [
         {
           institution: 'SkillBox',
-          year: '2024',
+          year: '2023',
           faculty: 'Информатика, Android-разработчик',
         },
       ],
