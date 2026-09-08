@@ -19,24 +19,24 @@ services:
         limits:
           memory: 256M
 
-  # Запускается явно при обслуживании; обычный запуск API данные не меняет.
+  # Автоматически применяет миграции и наполняет базу данными при первом запуске
   db-init:
-    profiles: [maintenance]
     build:
       context: .
       target: maintenance
     container_name: digital_card_db_init
     restart: "no"
-    command: ["npx", "prisma", "migrate", "deploy"]
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
     environment:
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
       postgres:
         condition: service_healthy
 
-  # Перед обновлением API примените миграции по DEPLOY.md.
   api:
-    build: .
+    build:
+      context: .
+      target: runner
     container_name: digital_card_api
     restart: unless-stopped
     ports:
@@ -49,6 +49,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
