@@ -38,9 +38,19 @@ export class RequestLimiter {
 }
 
 export function configureHttpSecurity(app: NestExpressApplication) {
-  // Explicit IPs/CIDRs only: never trust arbitrary forwarded headers by default.
-  const proxies = process.env.TRUSTED_PROXIES?.split(',').map((s) => s.trim()).filter(Boolean);
-  app.set('trust proxy', proxies?.length ? proxies : false);
+  // Настройка доверенных прокси: поддерживает число хопов (например "1" за Nginx),
+  // пресеты ("loopback", "uniquelocal") или список IP через запятую.
+  const rawProxies = process.env.TRUSTED_PROXIES?.trim();
+  if (rawProxies) {
+    const isHopCount = /^\d+$/.test(rawProxies);
+    const proxyConfig = isHopCount
+      ? parseInt(rawProxies, 10)
+      : rawProxies.split(',').map((s) => s.trim()).filter(Boolean);
+    app.set('trust proxy', proxyConfig);
+  } else {
+    app.set('trust proxy', false);
+  }
+
   const limiter = new RequestLimiter();
   app.use('/graphql', (req: Request, res: Response, next: NextFunction) => {
     const retryAfter = limiter.consume(req.ip ?? req.socket.remoteAddress ?? 'unknown');
