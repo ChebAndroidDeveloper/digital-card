@@ -33,6 +33,7 @@ export declare class ProfileResolver {
         position: string;
         period: string;
         achievements: string[];
+        sortOrder: number;
     }[]>;
     projects(profile: Profile): Promise<{
         name: string;
@@ -40,12 +41,14 @@ export declare class ProfileResolver {
         description: string | null;
         createdAt: Date;
         profileId: string;
+        sortOrder: number;
         url: string | null;
     }[]>;
     education(profile: Profile): Promise<{
         id: string;
         createdAt: Date;
         profileId: string;
+        sortOrder: number;
         institution: string;
         year: string;
         faculty: string;

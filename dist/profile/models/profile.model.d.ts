@@ -4,6 +4,7 @@ export declare class Skill {
     category?: string;
 }
 export declare class Experience {
+    sortOrder?: number;
     id: string;
     company: string;
     position: string;
@@ -11,12 +12,14 @@ export declare class Experience {
     achievements: string[];
 }
 export declare class Project {
+    sortOrder?: number;
     id: string;
     name: string;
     description?: string;
     url?: string;
 }
 export declare class Education {
+    sortOrder?: number;
     id: string;
     institution: string;
     year: string;

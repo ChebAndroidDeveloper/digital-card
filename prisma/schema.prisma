@@ -44,6 +44,7 @@ model Experience {
   position     String
   period       String
   achievements String[]
+  sortOrder Int @default(0)
   profileId    String
   profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
@@ -54,6 +55,7 @@ model Project {
   name        String
   description String?
   url         String?
+  sortOrder Int @default(0)
   profileId   String
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -64,6 +66,7 @@ model Education {
   institution String
   year        String
   faculty     String
+  sortOrder Int @default(0)
   profileId   String
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())

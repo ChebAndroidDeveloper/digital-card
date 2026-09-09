@@ -35,6 +35,7 @@ export declare class ProfileService {
         position: string;
         period: string;
         achievements: string[];
+        sortOrder: number;
     }[]>;
     getProjects(profileId: string): Promise<{
         name: string;
@@ -42,12 +43,14 @@ export declare class ProfileService {
         description: string | null;
         createdAt: Date;
         profileId: string;
+        sortOrder: number;
         url: string | null;
     }[]>;
     getEducation(profileId: string): Promise<{
         id: string;
         createdAt: Date;
         profileId: string;
+        sortOrder: number;
         institution: string;
         year: string;
         faculty: string;

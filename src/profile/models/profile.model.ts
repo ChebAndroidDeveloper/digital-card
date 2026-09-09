@@ -1,4 +1,4 @@
-import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 
 @ObjectType({ description: 'Professional skill' })
 export class Skill {
@@ -14,6 +14,10 @@ export class Skill {
 
 @ObjectType({ description: 'Work experience entry' })
 export class Experience {
+
+  @Field(() => Int, { nullable: true, description: 'Display sort order' })
+  sortOrder?: number;
+
   @Field(() => ID)
   id: string;
 
@@ -32,6 +36,10 @@ export class Experience {
 
 @ObjectType({ description: 'Portfolio project' })
 export class Project {
+
+  @Field(() => Int, { nullable: true, description: 'Display sort order' })
+  sortOrder?: number;
+
   @Field(() => ID)
   id: string;
 
@@ -47,6 +55,10 @@ export class Project {
 
 @ObjectType({ description: 'Education entry' })
 export class Education {
+
+  @Field(() => Int, { nullable: true, description: 'Display sort order' })
+  sortOrder?: number;
+
   @Field(() => ID)
   id: string;
 

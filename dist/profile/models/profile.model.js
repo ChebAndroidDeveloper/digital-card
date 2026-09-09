@@ -33,6 +33,7 @@ exports.Skill = Skill = __decorate([
     (0, graphql_1.ObjectType)({ description: 'Professional skill' })
 ], Skill);
 let Experience = class Experience {
+    sortOrder;
     id;
     company;
     position;
@@ -40,6 +41,10 @@ let Experience = class Experience {
     achievements;
 };
 exports.Experience = Experience;
+__decorate([
+    (0, graphql_1.Field)(() => graphql_1.Int, { nullable: true, description: 'Display sort order' }),
+    __metadata("design:type", Number)
+], Experience.prototype, "sortOrder", void 0);
 __decorate([
     (0, graphql_1.Field)(() => graphql_1.ID),
     __metadata("design:type", String)
@@ -64,12 +69,17 @@ exports.Experience = Experience = __decorate([
     (0, graphql_1.ObjectType)({ description: 'Work experience entry' })
 ], Experience);
 let Project = class Project {
+    sortOrder;
     id;
     name;
     description;
     url;
 };
 exports.Project = Project;
+__decorate([
+    (0, graphql_1.Field)(() => graphql_1.Int, { nullable: true, description: 'Display sort order' }),
+    __metadata("design:type", Number)
+], Project.prototype, "sortOrder", void 0);
 __decorate([
     (0, graphql_1.Field)(() => graphql_1.ID),
     __metadata("design:type", String)
@@ -90,12 +100,17 @@ exports.Project = Project = __decorate([
     (0, graphql_1.ObjectType)({ description: 'Portfolio project' })
 ], Project);
 let Education = class Education {
+    sortOrder;
     id;
     institution;
     year;
     faculty;
 };
 exports.Education = Education;
+__decorate([
+    (0, graphql_1.Field)(() => graphql_1.Int, { nullable: true, description: 'Display sort order' }),
+    __metadata("design:type", Number)
+], Education.prototype, "sortOrder", void 0);
 __decorate([
     (0, graphql_1.Field)(() => graphql_1.ID),
     __metadata("design:type", String)

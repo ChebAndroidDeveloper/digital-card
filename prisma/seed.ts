@@ -8,11 +8,7 @@ async function upsertProfile(locale: string, data: any) {
   });
 
   if (existing) {
-    if (process.env.SEED_UPDATE_EXISTING !== 'true') {
-      console.log(`Profile [${locale}] exists; preserving database content.`);
-      return;
-    }
-    console.log(`Updating existing profile [${locale}]...`);
+    console.log(`Updating existing profile [${locale}] with deterministic sortOrder...`);
     await prisma.$transaction([
       prisma.skill.deleteMany({ where: { profileId: existing.id } }),
       prisma.experience.deleteMany({ where: { profileId: existing.id } }),
@@ -87,6 +83,7 @@ async function main() {
           company: 'Vyacheslav Bronnikov Foundation',
           position: 'Fullstack Developer',
           period: 'April 2025 — Present',
+          sortOrder: 1,
           achievements: [
             'Architected server and client systems using Python, PHP, JS, REST API, and Webhooks.',
             'Implemented enterprise Doc-V BPM: workflow routing, approval chains, and business logic automation.',
@@ -100,6 +97,7 @@ async function main() {
           company: 'EdKids LLC',
           position: 'Fullstack / Android Developer',
           period: 'May 2024 — Present',
+          sortOrder: 2,
           achievements: [
             'Architected EdKids Android application using Gradle product flavors to support dedicated builds for Google Play and RuStore.',
             'Integrated Google Play Billing for the Google Play flavor and RuStore Pay SDK for the domestic market flavor.',
@@ -112,6 +110,7 @@ async function main() {
           company: 'Vodokanal JSC',
           position: 'Software Engineer',
           period: 'July 2023 — March 2025',
+          sortOrder: 3,
           achievements: [
             'Automated customer technical conditions request and issuance workflows.',
             'Developed and deployed internal electronic document management system (EDMS).',
@@ -127,24 +126,28 @@ async function main() {
           description:
             'Interactive GraphQL resume backend built with NestJS, Prisma ORM, PostgreSQL, and Docker with Apollo Sandbox.',
           url: 'https://github.com/ChebAndroidDeveloper/digital-card',
+          sortOrder: 1,
         },
         {
           name: 'EdKids (Google Play Edition)',
           description:
             'Interactive educational multimedia platform for children. Features Google Play Billing integration and offline media caching.',
           url: 'https://play.google.com/store/apps/details?id=ru.edkids',
+          sortOrder: 2,
         },
         {
           name: 'EdKids (RuStore Edition)',
           description:
             'RuStore product flavor of EdKids platform featuring native RuStore Pay integration and custom session timer.',
           url: 'https://www.rustore.ru/catalog/app/ru.edkids.rustore',
+          sortOrder: 3,
         },
         {
           name: 'VM Bronnikov Foundation Ecosystem',
           description:
             'Enterprise digital workspace integrating Doc-V BPM, LiveKit WebRTC video conferencing, and EDMS.',
           url: 'https://www.fundvmbronnikov.ru/',
+          sortOrder: 4,
         },
       ],
     },
@@ -154,6 +157,7 @@ async function main() {
           institution: 'SkillBox',
           year: '2023',
           faculty: 'Computer Science, Android Development',
+          sortOrder: 1,
         },
       ],
     },
@@ -199,6 +203,7 @@ async function main() {
           company: 'Благотворительный Фонд Вячеслава Бронникова',
           position: 'Fullstack-разработчик',
           period: 'Апрель 2025 — настоящее время',
+          sortOrder: 1,
           achievements: [
             'Разработка серверной и клиентской архитектуры (Python, PHP, JS, REST API, Webhook).',
             'Внедрение корпоративной системы Doc-V BPM: настройка маршрутов согласования и интеграций.',
@@ -212,6 +217,7 @@ async function main() {
           company: 'ООО Эдкидс',
           position: 'Fullstack / Android разработчик',
           period: 'Май 2024 — настоящее время',
+          sortOrder: 2,
           achievements: [
             'Архитектура приложения с использованием Gradle product flavors: раздельные сборки под Google Play и RuStore.',
             'Интеграция Google Play Billing для Google Play флавора и RuStore Pay для отечественного стора.',
@@ -224,6 +230,7 @@ async function main() {
           company: 'АО Водоканал',
           position: 'Инженер-программист',
           period: 'Июль 2023 — Март 2025',
+          sortOrder: 3,
           achievements: [
             'Разработка системы автоматизации процесса получения технических условий заказчиками.',
             'Проектирование и внедрение корпоративной системы электронного документооборота (ЭДО).',
@@ -239,24 +246,28 @@ async function main() {
           description:
             'Интерактивная GraphQL цифровая визитка и резюме на NestJS, Prisma ORM, PostgreSQL и Docker с Apollo Sandbox.',
           url: 'https://github.com/ChebAndroidDeveloper/digital-card',
+          sortOrder: 1,
         },
         {
           name: 'EdKids (Google Play)',
           description:
             'Детская образовательная интерактивная платформа с интеграцией Google Play Billing и оффлайн-кэшированием.',
           url: 'https://play.google.com/store/apps/details?id=ru.edkids',
+          sortOrder: 2,
         },
         {
           name: 'EdKids (RuStore)',
           description:
             'Версия платформы EdKids под RuStore со встроенной платежной системой RuStore Pay и контролем сессий.',
           url: 'https://www.rustore.ru/catalog/app/ru.edkids.rustore',
+          sortOrder: 3,
         },
         {
           name: 'Экосистема Фонда В. Бронникова',
           description:
             'Комплексная корпоративная инфраструктура: Doc-V BPM, видеоконференции LiveKit, ЭДО и медиасервер.',
           url: 'https://www.fundvmbronnikov.ru/',
+          sortOrder: 4,
         },
       ],
     },
@@ -266,6 +277,7 @@ async function main() {
           institution: 'SkillBox',
           year: '2023',
           faculty: 'Информатика, Android-разработчик',
+          sortOrder: 1,
         },
       ],
     },
