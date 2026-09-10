@@ -26,6 +26,9 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Check Code Quality (Linter)
+        run: npm run lint
+
       - name: Check TypeScript Compilation
         run: npm run build
 
@@ -35,12 +38,19 @@ jobs:
       - name: Run E2E Mock Tests
         run: npm run test:e2e
 
-      - name: Integration Test with Real PostgreSQL (Docker Compose Stack)
+      - name: Full Stack Integration Test (PostgreSQL + Migrations + Seed + Repeat Seed)
         run: |
           cp .env.example .env
           docker compose up -d --build
           sleep 5
-          curl --fail --retry 10 --retry-delay 2 -s -X POST http://localhost:3000/graphql \
-            -H "Content-Type: application/json" \
-            -d '{"query": "{ profile(locale: \"en\") { name title experience { company sortOrder } } }"}' | grep "Konstantin Chumbakov"
+
+          # 1. Первая глубокая проверка только что засеянной базы:
+          node test/smoke-stack.cjs
+
+          # 2. Проверяем сценарий повторного сида на существующей базе:
+          docker compose run --rm db-init npx prisma db seed
+
+          # 3. Повторная глубокая проверка (убеждаемся, что данные не сломались и не дублировались):
+          node test/smoke-stack.cjs
+
           docker compose down
