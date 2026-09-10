@@ -26,6 +26,20 @@ test('real HTTP GraphQL pipeline with mocked database', async (t) => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       return [{ id: 's1', name: 'TypeScript' }];
     } },
+    experience: {
+      findMany: async ({ orderBy }) => {
+        // Данные вставлены вперемешку (3, затем 1, затем 2):
+        const items = [
+          { id: 'e3', company: 'Vodokanal', sortOrder: 3 },
+          { id: 'e1', company: 'Bronnikov Foundation', sortOrder: 1 },
+          { id: 'e2', company: 'EdKids', sortOrder: 2 },
+        ];
+        if (orderBy?.[0]?.sortOrder) {
+          return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+        }
+        return items;
+      },
+    },
   };
   let app;
   try {
@@ -36,6 +50,15 @@ test('real HTTP GraphQL pipeline with mocked database', async (t) => {
     await app.init();
     const send = (query) => request(app.getHttpServer()).post('/graphql').send({ query });
 
+    await t.test('experience is sorted deterministically by sortOrder rather than insertion order', async () => {
+      const result = await send('{ profile { experience { company sortOrder } } }');
+      assert.equal(result.status, 200);
+      assert.equal(result.body.errors, undefined);
+      assert.deepEqual(
+        result.body.data.profile.experience.map((e) => e.company),
+        ['Bronnikov Foundation', 'EdKids', 'Vodokanal'],
+      );
+    });
     await t.test('concurrent field aliases share a pending database request', async () => {
       const result = await send('{ profile { name a: skills { name } b: skills { name } } }');
       assert.equal(result.status, 200);

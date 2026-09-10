@@ -39,19 +39,19 @@ export class ProfileService {
 
   getExperience(profileId: string) {
     return this.cached(`experience:${profileId}`, () => this.prisma.experience.findMany({
-      where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     }));
   }
 
   getProjects(profileId: string) {
     return this.cached(`projects:${profileId}`, () => this.prisma.project.findMany({
-      where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     }));
   }
 
   getEducation(profileId: string) {
     return this.cached(`education:${profileId}`, () => this.prisma.education.findMany({
-      where: { profileId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     }));
   }
 }
