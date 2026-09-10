@@ -27,11 +27,13 @@ export declare class ProfileService {
         createdAt: Date;
         category: string | null;
         profileId: string;
+        key: string;
     }[]>;
     getExperience(profileId: string): Promise<{
         id: string;
         createdAt: Date;
         profileId: string;
+        key: string;
         company: string;
         position: string;
         period: string;
@@ -44,6 +46,7 @@ export declare class ProfileService {
         description: string | null;
         createdAt: Date;
         profileId: string;
+        key: string;
         sortOrder: number;
         url: string | null;
     }[]>;
@@ -51,6 +54,7 @@ export declare class ProfileService {
         id: string;
         createdAt: Date;
         profileId: string;
+        key: string;
         sortOrder: number;
         institution: string;
         year: string;

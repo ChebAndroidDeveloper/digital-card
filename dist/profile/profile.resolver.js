@@ -21,19 +21,19 @@ let ProfileResolver = class ProfileResolver {
     constructor(profileService) {
         this.profileService = profileService;
     }
-    async getProfile(locale) {
+    getProfile(locale) {
         return this.profileService.findByLocale(locale);
     }
-    async skills(profile) {
+    skills(profile) {
         return this.profileService.getSkills(profile.id);
     }
-    async experience(profile) {
+    experience(profile) {
         return this.profileService.getExperience(profile.id);
     }
-    async projects(profile) {
+    projects(profile) {
         return this.profileService.getProjects(profile.id);
     }
-    async education(profile) {
+    education(profile) {
         return this.profileService.getEducation(profile.id);
     }
 };
@@ -47,14 +47,14 @@ __decorate([
     __param(0, (0, graphql_1.Args)('locale', { type: () => String, nullable: true, defaultValue: 'en' })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], ProfileResolver.prototype, "getProfile", null);
 __decorate([
     (0, graphql_1.ResolveField)(() => [profile_model_1.Skill], { description: 'Skills related to this profile' }),
     __param(0, (0, graphql_1.Parent)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [profile_model_1.Profile]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], ProfileResolver.prototype, "skills", null);
 __decorate([
     (0, graphql_1.ResolveField)(() => [profile_model_1.Experience], {
@@ -63,7 +63,7 @@ __decorate([
     __param(0, (0, graphql_1.Parent)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [profile_model_1.Profile]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], ProfileResolver.prototype, "experience", null);
 __decorate([
     (0, graphql_1.ResolveField)(() => [profile_model_1.Project], {
@@ -72,7 +72,7 @@ __decorate([
     __param(0, (0, graphql_1.Parent)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [profile_model_1.Profile]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], ProfileResolver.prototype, "projects", null);
 __decorate([
     (0, graphql_1.ResolveField)(() => [profile_model_1.Education], {
@@ -81,7 +81,7 @@ __decorate([
     __param(0, (0, graphql_1.Parent)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [profile_model_1.Profile]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], ProfileResolver.prototype, "education", null);
 exports.ProfileResolver = ProfileResolver = __decorate([
     (0, graphql_1.Resolver)(() => profile_model_1.Profile),

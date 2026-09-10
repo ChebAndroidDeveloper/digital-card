@@ -30,27 +30,28 @@ jobs:
         run: npm run lint
 
       - name: Check TypeScript Compilation
-        run: npm run build
+        run: |
+          npm run build
+          npm run typecheck:seed
 
       - name: Run Unit Tests
         run: npm test
 
       - name: Run E2E Mock Tests
-        run: npm run test:e2e
+        run: node --test test/app.e2e.test.cjs
 
-      - name: Full Stack Integration Test (PostgreSQL + Migrations + Seed + Repeat Seed)
+      - name: Full Stack Integration Test
         run: |
           cp .env.example .env
           docker compose up -d --build
-          sleep 5
-
-          # 1. Первая глубокая проверка только что засеянной базы:
+          docker compose up -d --wait --wait-timeout 120 api
           node test/smoke-stack.cjs
+          docker compose run --rm --no-deps db-init npm run test:db
 
-          # 2. Проверяем сценарий повторного сида на существующей базе:
-          docker compose run --rm db-init npx prisma db seed
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color
 
-          # 3. Повторная глубокая проверка (убеждаемся, что данные не сломались и не дублировались):
-          node test/smoke-stack.cjs
-
-          docker compose down
+      - name: Stop test stack
+        if: always()
+        run: docker compose down

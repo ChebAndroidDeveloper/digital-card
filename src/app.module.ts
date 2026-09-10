@@ -6,8 +6,10 @@ import { queryBudget } from './common/query-budget';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProfileModule } from './profile/profile.module';
 import { formatGraphQLError } from './common/format-graphql-error';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     PrismaModule,
     ProfileModule,

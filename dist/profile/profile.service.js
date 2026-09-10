@@ -12,11 +12,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProfileService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const with_timeout_1 = require("../common/with-timeout");
 let ProfileService = class ProfileService {
     prisma;
     cache = new Map();
     ttlMs = 60_000;
-    queryTimeoutMs = 5_000;
+    queryTimeoutMs = 8_000;
     constructor(prisma) {
         this.prisma = prisma;
     }
@@ -29,47 +30,49 @@ let ProfileService = class ProfileService {
             if (oldEntry.expiresAt <= now)
                 this.cache.delete(oldKey);
         }
-        const loadWithTimeout = Promise.race([
-            Promise.resolve().then(load),
-            new Promise((_, reject) => {
-                const timer = setTimeout(() => {
-                    reject(new Error(`Database query timed out after ${this.queryTimeoutMs}ms`));
-                }, this.queryTimeoutMs);
-                if (typeof timer.unref === 'function')
-                    timer.unref();
-            }),
-        ]);
-        const next = { value: loadWithTimeout, expiresAt: now + this.queryTimeoutMs };
+        const loadWithTimeout = (0, with_timeout_1.withTimeout)(Promise.resolve().then(load), this.queryTimeoutMs);
+        const next = {
+            value: loadWithTimeout,
+            expiresAt: now + this.queryTimeoutMs,
+        };
         if (this.cache.size >= 256)
             return next.value;
         this.cache.set(key, next);
-        void next.value.then(() => { next.expiresAt = Date.now() + this.ttlMs; }, () => { if (this.cache.get(key) === next)
-            this.cache.delete(key); });
+        void next.value.then(() => {
+            next.expiresAt = Date.now() + this.ttlMs;
+        }, () => {
+            if (this.cache.get(key) === next)
+                this.cache.delete(key);
+        });
         return next.value;
     }
     async findByLocale(locale = 'en') {
         if (locale !== 'en' && locale !== 'ru')
             return null;
-        return this.cached(`profile:${locale}`, () => this.prisma.profile.findFirst({ where: { locale } }));
+        return this.cached(`profile:${locale}`, () => this.prisma.profile.findUnique({ where: { locale } }));
     }
     getSkills(profileId) {
         return this.cached(`skills:${profileId}`, () => this.prisma.skill.findMany({
-            where: { profileId }, orderBy: [{ category: 'asc' }, { name: 'asc' }],
+            where: { profileId },
+            orderBy: [{ category: 'asc' }, { name: 'asc' }],
         }));
     }
     getExperience(profileId) {
         return this.cached(`experience:${profileId}`, () => this.prisma.experience.findMany({
-            where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+            where: { profileId },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         }));
     }
     getProjects(profileId) {
         return this.cached(`projects:${profileId}`, () => this.prisma.project.findMany({
-            where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+            where: { profileId },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         }));
     }
     getEducation(profileId) {
         return this.cached(`education:${profileId}`, () => this.prisma.education.findMany({
-            where: { profileId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+            where: { profileId },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         }));
     }
 };

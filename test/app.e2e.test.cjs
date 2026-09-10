@@ -8,6 +8,59 @@ const { ProfileService } = require('../dist/profile/profile.service');
 const { configureHttpSecurity, RequestLimiter } = require('../dist/common/http-security');
 const { getIntrospectionQuery } = require('graphql');
 
+test('health endpoint hides database errors and recovers', async () => {
+  let unavailable = true;
+  const module = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(PrismaService).useValue({
+      $queryRaw: async () => {
+        if (unavailable) throw new Error('PRIVATE_DATABASE_HOST:5432');
+        return [{ '?column?': 1 }];
+      },
+    }).compile();
+  const app = module.createNestApplication({ logger: false });
+  try {
+    await app.init();
+    const failed = await request(app.getHttpServer()).get('/health');
+    assert.equal(failed.status, 503);
+    assert.deepEqual(failed.body, { status: 'unhealthy' });
+    unavailable = false;
+    const recovered = await request(app.getHttpServer()).get('/health');
+    assert.equal(recovered.status, 200);
+    assert.equal(recovered.body.status, 'ok');
+    assert.equal((await request(app.getHttpServer()).head('/health')).status, 200);
+  } finally {
+    await app.close();
+  }
+});
+
+test('health timeout shares an outstanding probe and allows recovery', async () => {
+  let finishProbe;
+  let calls = 0;
+  const probe = new Promise((resolve) => { finishProbe = resolve; });
+  const module = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(PrismaService).useValue({
+      $queryRaw: () => { calls++; return probe; },
+    }).compile();
+  const app = module.createNestApplication({ logger: false });
+  try {
+    await app.init();
+    const results = await Promise.all([
+      request(app.getHttpServer()).get('/health'),
+      request(app.getHttpServer()).get('/health'),
+    ]);
+    for (const result of results) {
+      assert.equal(result.status, 503);
+      assert.deepEqual(result.body, { status: 'unhealthy' });
+    }
+    assert.equal(calls, 1);
+    finishProbe([]);
+    assert.equal((await request(app.getHttpServer()).get('/health')).status, 200);
+  } finally {
+    finishProbe([]);
+    await app.close();
+  }
+});
+
 test('real HTTP GraphQL pipeline with mocked database (direct connection)', async (t) => {
   const previousEnv = process.env.NODE_ENV;
   const previousProxy = process.env.TRUSTED_PROXIES;
@@ -16,7 +69,7 @@ test('real HTTP GraphQL pipeline with mocked database (direct connection)', asyn
   let profileCalls = 0;
   let skillCalls = 0;
   const prisma = {
-    profile: { findFirst: async ({ where }) => {
+    profile: { findUnique: async ({ where }) => {
       profileCalls++;
       if (where.locale === 'ru') throw new Error('PRIVATE_DATABASE_HOST:5432');
       return { id: 'p1', locale: 'en', name: 'Test' };
@@ -186,7 +239,7 @@ test('limiter expires records and fails closed at capacity', () => {
 
 test('failed cached requests can retry, unsupported locales never hit the database', async () => {
   let calls = 0;
-  const service = new ProfileService({ profile: { findFirst: async () => {
+  const service = new ProfileService({ profile: { findUnique: async () => {
     calls++;
     if (calls === 1) throw new Error('temporary');
     return { id: 'p1' };

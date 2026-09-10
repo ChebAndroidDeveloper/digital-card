@@ -1,50 +1,59 @@
 jest.mock('@nestjs/common', () => ({
-  Injectable: () => (target: any) => target,
+  Injectable: () => (target: unknown) => target,
 }));
 
 import { ProfileService } from './profile.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-describe('ProfileService', () => {
+describe('ProfileService cache', () => {
+  const findUnique = jest.fn();
   let service: ProfileService;
-  let mockPrismaService: any;
 
   beforeEach(() => {
-    mockPrismaService = {
-      profile: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'test-uuid',
-          locale: 'en',
-          name: 'Konstantin Chumbakov',
-          title: 'Software Engineer / Fullstack Developer',
-        }),
-      },
-      skill: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: '1', name: 'TypeScript', category: 'Backend' },
-        ]),
-      },
-    };
-
-    service = new ProfileService(mockPrismaService as PrismaService);
+    jest.useFakeTimers();
+    findUnique.mockReset().mockResolvedValue({ id: 'p1', name: 'Test' });
+    service = new ProfileService({
+      profile: { findUnique },
+    } as unknown as PrismaService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  afterEach(() => jest.useRealTimers());
+
+  it('refreshes the value after TTL', async () => {
+    await service.findByLocale('en');
+    await jest.advanceTimersByTimeAsync(59_999);
+    await service.findByLocale('en');
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await service.findByLocale('en');
+    expect(findUnique).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
-  it('should return profile by locale', async () => {
-    const profile = await service.findByLocale('en');
-    expect(profile).toBeDefined();
-    expect(profile?.name).toBe('Konstantin Chumbakov');
-    expect(mockPrismaService.profile.findFirst).toHaveBeenCalledWith({
-      where: { locale: 'en' },
+  it('shares a timeout between callers and retries afterwards', async () => {
+    findUnique.mockImplementationOnce(() => new Promise(() => {}));
+    const first = expect(service.findByLocale('en')).rejects.toThrow(
+      'timed out',
+    );
+    const second = expect(service.findByLocale('en')).rejects.toThrow(
+      'timed out',
+    );
+    await jest.advanceTimersByTimeAsync(8000);
+    await Promise.all([first, second]);
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(await service.findByLocale('en')).toEqual({
+      id: 'p1',
+      name: 'Test',
     });
+    expect(findUnique).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
-  it('should return skills for profile', async () => {
-    const skills = await service.getSkills('test-uuid');
-    expect(skills).toHaveLength(1);
-    expect(skills[0].name).toBe('TypeScript');
+  it('clears the timer after an early database error', async () => {
+    findUnique.mockRejectedValueOnce(new Error('connection lost'));
+    await expect(service.findByLocale('en')).rejects.toThrow('connection lost');
+    expect(jest.getTimerCount()).toBe(0);
+    await service.findByLocale('en');
+    expect(findUnique).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,95 +1,53 @@
-const http = require('node:http');
 const assert = require('node:assert/strict');
 
-function sendQuery(query) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({ query });
-    const req = http.request(
-      'http://localhost:3000/graphql',
+async function verify() {
+  for (const [locale, name] of [
+    ['en', 'Konstantin Chumbakov'],
+    ['ru', 'Константин Чумбаков'],
+  ]) {
+    const response = await fetch(
+      process.env.GRAPHQL_URL ?? 'http://localhost:3000/graphql',
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      },
-      (res) => {
-        let raw = '';
-        res.on('data', (chunk) => (raw += chunk));
-        res.on('end', () => {
-          try {
-            resolve({ status: res.statusCode, data: JSON.parse(raw) });
-          } catch {
-            reject(new Error(`Failed to parse JSON response: ${raw}`));
-          }
-        });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `{ profile(locale: "${locale}") {
+          name title skills { id name category }
+          experience { id company sortOrder }
+          projects { id name sortOrder }
+          education { id institution sortOrder }
+        } }`,
+        }),
+        signal: AbortSignal.timeout(10_000),
       },
     );
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.errors, undefined);
+    const profile = body.data.profile;
+    assert.equal(profile.name, name);
+    assert.ok(profile.title);
+    for (const [field, count] of Object.entries({
+      skills: 19,
+      experience: 3,
+      projects: 4,
+      education: 1,
+    })) {
+      assert.equal(profile[field].length, count, `${locale}: ${field} count`);
+      assert.equal(new Set(profile[field].map((item) => item.id)).size, count);
+      if (field !== 'skills') {
+        assert.deepEqual(
+          profile[field].map((item) => item.sortOrder),
+          Array.from({ length: count }, (_, i) => i + 1),
+          `${locale}: ${field} order`,
+        );
+      }
+    }
+  }
+  console.log('GraphQL smoke test passed.');
 }
 
-async function verify() {
-  console.log('🔍 Running Deep GraphQL JSON Smoke Verification...');
-
-  // 1. Проверяем локаль EN:
-  const enRes = await sendQuery(`{
-    profile(locale: "en") {
-      name
-      title
-      skills { name category }
-      experience { company sortOrder }
-      projects { name sortOrder }
-      education { institution sortOrder }
-    }
-  }`);
-
-  assert.equal(enRes.status, 200, 'HTTP status must be 200');
-  assert.equal(enRes.data.errors, undefined, 'EN query must not produce GraphQL errors');
-  assert.equal(enRes.data.data.profile.name, 'Konstantin Chumbakov');
-  assert.ok(enRes.data.data.profile.skills.length > 0, 'EN skills must be non-empty');
-  assert.ok(enRes.data.data.profile.projects.length > 0, 'EN projects must be non-empty');
-  assert.ok(enRes.data.data.profile.education.length > 0, 'EN education must be non-empty');
-
-  // Проверяем строгий порядок sortOrder в EN:
-  const enExp = enRes.data.data.profile.experience;
-  assert.deepEqual(
-    enExp.map((e) => e.company),
-    ['Vyacheslav Bronnikov Foundation', 'EdKids LLC', 'Vodokanal JSC'],
-    'EN experience must strictly follow sortOrder',
-  );
-
-  // 2. Проверяем локаль RU:
-  const ruRes = await sendQuery(`{
-    profile(locale: "ru") {
-      name
-      title
-      skills { name category }
-      experience { company sortOrder }
-      projects { name sortOrder }
-      education { institution sortOrder }
-    }
-  }`);
-
-  assert.equal(ruRes.status, 200, 'HTTP status must be 200');
-  assert.equal(ruRes.data.errors, undefined, 'RU query must not produce GraphQL errors');
-  assert.equal(ruRes.data.data.profile.name, 'Константин Чумбаков');
-  assert.ok(ruRes.data.data.profile.skills.length > 0, 'RU skills must be non-empty');
-
-  // Проверяем строгий порядок sortOrder в RU:
-  const ruExp = ruRes.data.data.profile.experience;
-  assert.deepEqual(
-    ruExp.map((e) => e.company),
-    ['Благотворительный Фонд Вячеслава Бронникова', 'ООО Эдкидс', 'АО Водоканал'],
-    'RU experience must strictly follow sortOrder',
-  );
-
-  console.log('✅ Deep GraphQL verification passed: 0 errors, full nested models, exact sortOrder.');
-}
-
-verify().catch((e) => {
-  console.error('❌ Smoke verification failed:', e);
-  process.exit(1);
+verify().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

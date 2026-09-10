@@ -21,3 +21,6 @@ src/generated/prisma/
 .vscode/
 .DS_Store
 Thumbs.db
+.previous-release
+compose.rollback.yml
+backup*.sql

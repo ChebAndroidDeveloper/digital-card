@@ -18,7 +18,7 @@ export class ProfileResolver {
     description:
       'Get developer profile by locale (default: "en", supported: "en", "ru")',
   })
-  async getProfile(
+  getProfile(
     @Args('locale', { type: () => String, nullable: true, defaultValue: 'en' })
     locale: string,
   ) {
@@ -26,28 +26,28 @@ export class ProfileResolver {
   }
 
   @ResolveField(() => [Skill], { description: 'Skills related to this profile' })
-  async skills(@Parent() profile: Profile) {
+  skills(@Parent() profile: Profile) {
     return this.profileService.getSkills(profile.id);
   }
 
   @ResolveField(() => [Experience], {
     description: 'Work history related to this profile',
   })
-  async experience(@Parent() profile: Profile) {
+  experience(@Parent() profile: Profile) {
     return this.profileService.getExperience(profile.id);
   }
 
   @ResolveField(() => [Project], {
     description: 'Projects related to this profile',
   })
-  async projects(@Parent() profile: Profile) {
+  projects(@Parent() profile: Profile) {
     return this.profileService.getProjects(profile.id);
   }
 
   @ResolveField(() => [Education], {
     description: 'Education history related to this profile',
   })
-  async education(@Parent() profile: Profile) {
+  education(@Parent() profile: Profile) {
     return this.profileService.getEducation(profile.id);
   }
 }

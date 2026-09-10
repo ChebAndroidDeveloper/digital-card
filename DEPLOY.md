@@ -32,31 +32,25 @@ docker compose down
 
 ---
 
-## 2. Local Development (Without Docker)
+## 2. Local Checks on Windows
 
-For active local development with hot-reload:
+Docker is not required locally. Run these checks in PowerShell before committing and pushing:
 
-```bash
-# 1. Install dependencies
+```powershell
 npm ci
-
-# 2. Generate Prisma client
 npx prisma generate
-
-# 3. Apply database schema and seed
-npx prisma migrate deploy
-npx prisma db seed
-
-# 4. Start NestJS in watch mode
-npm run start:dev
+npm run lint
+npm run build
+npm run typecheck:seed
+npm test -- --runInBand
+node --test test/app.e2e.test.cjs
 ```
 
-Run test and lint suites:
-```bash
-npm run lint      # Code quality check (Oxlint)
-npm test          # Unit tests (Jest)
-npm run test:e2e  # Integration E2E tests (Node native test runner)
-```
+The unit and HTTP tests use a mock database. `npm run test:db` additionally checks migrations, seed and SQL cancellation against PostgreSQL. It creates a temporary schema and removes it afterwards; use a separate test database, never production. GitHub Actions runs this test with PostgreSQL 16 in Docker.
+
+For local development with live data, start a local PostgreSQL server and set DATABASE_URL to its address. The Docker hostname `postgres` from .env.example is only reachable inside Compose. Apply migrations and seed to the local database, then run `npm run start:dev`.
+
+Commit source files, migrations and the lockfile, then push to GitHub and wait for CI to pass. The server pulls those changes and builds its own Docker images. Local build output is not used for deployment.
 
 ---
 
@@ -82,71 +76,84 @@ server {
 }
 ```
 
-### Production Update Procedure (Short Switchover Window):
+### Production Update Procedure
 
-In a single-container deployment, updates incur a minimal switchover window (~1-2 seconds) while the API container recreates. Both the `maintenance` image (for migrations/seed) and the `runner` image (for API) are rebuilt to ensure migrations and runtime code stay synchronized.
+Updates replace the only API container, so a short outage is expected. Measure the actual switchover time on your server; there is no guaranteed duration.
 
-1. **Pull and Deploy Updates (with Migrations & Seed):**
-   ```bash
-   cd /opt/digital-card
-   git pull origin main
+Before updating, keep the current API image and a database backup:
 
-   # Builds both maintenance and runner stages, runs db-init migrations/seed, and restarts API
-   docker compose up -d --build
-   ```
+```bash
+cd /opt/digital-card
+previous_release=$(git rev-parse HEAD)
+docker image tag "$(docker compose images -q api)" "digital-card-api:$previous_release"
+printf '%s\n' "$previous_release" > .previous-release
 
-2. **Verify Deployment Health (Smoke Test):**
-   ```bash
-   curl --fail -s -X POST https://developerresume.webredirect.org/graphql \
-     -H "Content-Type: application/json" \
-     -d '{"query": "{ profile(locale: \"en\") { name } }"}'
-   ```
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "backup-$previous_release.sql"
+```
 
-3. **Rollback Strategy (in case of failure):**
-   ```bash
-   # Revert to the previous git commit and rebuild
-   git reset --hard HEAD@{1}
-   docker compose up -d --build
-   ```
+Keep the backup outside the VPS too. The release file and image tag should refer to the last deployment that passed its checks; start from a clean Git checkout.
 
----
+```bash
+git pull --ff-only origin main
+docker compose build api db-init
+docker compose run --rm --no-deps db-init
+docker compose up -d --no-deps --wait --wait-timeout 120 api
+docker compose run --rm --no-deps -e GRAPHQL_URL=http://api:3000/graphql db-init node test/smoke-stack.cjs
+```
 
-## 4. Production Content Architecture (Resume as Code)
+The migration and seed run before the new API starts. Schema changes must remain compatible with the old API while it is still serving requests. If the migration or seed fails, stop the update and inspect its logs before replacing the API.
 
-In this project, `prisma/seed.ts` is the declarative **Single Source of Truth** for the production resume content (*Resume as Code*).
+### Rollback
 
-### Non-Destructive Seed Updates:
-When `prisma db seed` executes against an existing database, it performs **in-place upserts by stable business keys** (`company`, `name`, `institution`):
-- Existing database `id` (UUIDs) are **strictly preserved**, preventing client-side cache invalidation (e.g. Apollo Client cache).
-- Added entities are inserted with new UUIDs.
-- Removed entities are cleaned up safely in an atomic database transaction.
+Use the saved release SHA and API image, not a reflog position. First check that the old API supports the current database schema. Rolling back an image does not undo migrations. Prefer a forward fix when schema compatibility is uncertain; restoring a backup requires downtime and loses changes made after that backup.
 
----
+For a compatible schema, create a local override using the saved SHA:
 
-## 5. Disaster Recovery & Backup Strategy
+```yaml
+# compose.rollback.yml
+services:
+  api:
+    image: digital-card-api:<saved-sha>
+```
 
-### Recovery Objectives:
-- **RPO (Recovery Point Objective):** 0 minutes (The entire production resume data is declarative in Git under `prisma/seed.ts`).
-- **RTO (Recovery Time Objective):** < 3 minutes (Time to spin up fresh containers on any clean VPS via Docker Compose).
+```bash
+docker compose -f docker-compose.yml -f compose.rollback.yml up -d --no-deps --no-build --wait --wait-timeout 120 api
+```
 
-### Database Backup & Restore:
+Verify /health and a GraphQL response with no errors using the smoke test from that release. Do not rerun the old seed automatically: it can overwrite newer content. Keep the saved image until the release has been verified.
 
-1. **Create Database Snapshot:**
-   ```bash
-   docker exec -t digital_card_db pg_dump -U postgres digital_card > backup.sql
-   ```
+## 4. Production Content
 
-2. **Restore Database from Snapshot:**
-   ```bash
-   cat backup.sql | docker exec -i digital_card_db psql -U postgres -d digital_card
-   ```
+Resume content lives in `prisma/content.ts`; `prisma/seed.ts` synchronizes it with the database. Each child record has an explicit `key`, unique within its profile and relation. Keep that key when renaming a company or project. Give different positions at the same company different keys.
 
-3. **Complete Cold-Start Disaster Recovery:**
-   If the entire VPS is lost, provision a new server and run:
-   ```bash
-   git clone https://github.com/ChebAndroidDeveloper/digital-card.git /opt/digital-card
-   cd /opt/digital-card
-   cp .env.example .env
-   # Set POSTGRES_PASSWORD in .env
-   docker compose up -d --build
-   ```
+The seed updates existing records in place, inserts new keys and removes keys no longer present in the content. Each profile is synchronized in its own transaction. English and Russian profiles are separate transactions.
+
+The stable-key migration matches existing seed entries by their old names and preserves their IDs. Unknown entries and extra duplicates receive a `legacy:<id>` key. The seed leaves those records untouched. Review them after upgrading: assign the intended key and add the entry to content, or remove it explicitly if it is no longer needed. The `legacy:` prefix is reserved for migration leftovers.
+
+## 5. Health Checks and Database Limits
+
+`GET /health` (also HEAD) checks database availability. It returns 503 with only an unhealthy status on failure; details stay in server logs. The HTTP check waits at most 2 seconds and shares an outstanding database probe between callers.
+
+The API adds runtime connection limits: 2 seconds to connect or wait for the pool, 5 seconds for a socket query, a PostgreSQL statement timeout of 4 seconds and lock timeout of 2 seconds. The application wait limit is 8 seconds. The server-side timeout cancels SQL; the application timer only bounds the wait. These settings are applied to API connections, not migration or seed connections. They use the [Prisma PostgreSQL connection parameters](https://docs.prisma.io/docs/orm/v6/overview/databases/postgresql).
+
+The profile cache lasts 60 seconds. A manual seed while the API is running can remain invisible until the cache expires; restart the API when content must become visible immediately.
+
+## 6. Backup and Recovery
+
+Recovery targets need a timed restore exercise on the actual server. There is no measured RTO yet. Git can restore committed resume content, but not database-generated IDs or changes made directly in the database. The database RPO depends on the age of the latest usable backup.
+
+Create a backup:
+
+```bash
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
+```
+
+Restore into an empty database, with the API stopped. The dump includes tables and data; do not first run migrations or seed against that target.
+
+```bash
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 --single-transaction -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backup.sql
+```
+
+On a replacement VPS, install Docker, restore the environment and reverse proxy/TLS configuration, start PostgreSQL, restore the backup, then deploy the matching release. Keep POSTGRES_PASSWORD and the password in DATABASE_URL consistent. If no backup exists, migrations and seed rebuild committed content with new IDs.
+
+After recovery, check /health, both GraphQL locales, nested counts and IDs against the backup. Record backup age, restore duration and the release SHA. Store backups and deployment configuration off the VPS.

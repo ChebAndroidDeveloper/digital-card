@@ -15,11 +15,13 @@ const query_budget_1 = require("./common/query-budget");
 const prisma_module_1 = require("./prisma/prisma.module");
 const profile_module_1 = require("./profile/profile.module");
 const format_graphql_error_1 = require("./common/format-graphql-error");
+const health_controller_1 = require("./health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
+        controllers: [health_controller_1.HealthController],
         imports: [
             prisma_module_1.PrismaModule,
             profile_module_1.ProfileModule,

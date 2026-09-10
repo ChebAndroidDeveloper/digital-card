@@ -36,6 +36,9 @@ model Skill {
   profileId String
   profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  key       String
+
+  @@unique([profileId, key])
 }
 
 model Experience {
@@ -44,10 +47,13 @@ model Experience {
   position     String
   period       String
   achievements String[]
-  sortOrder Int @default(0)
+  sortOrder    Int      @default(0)
   profileId    String
   profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
+  key          String
+
+  @@unique([profileId, key])
 }
 
 model Project {
@@ -55,10 +61,13 @@ model Project {
   name        String
   description String?
   url         String?
-  sortOrder Int @default(0)
+  sortOrder   Int      @default(0)
   profileId   String
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  key         String
+
+  @@unique([profileId, key])
 }
 
 model Education {
@@ -66,8 +75,11 @@ model Education {
   institution String
   year        String
   faculty     String
-  sortOrder Int @default(0)
+  sortOrder   Int      @default(0)
   profileId   String
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  key         String
+
+  @@unique([profileId, key])
 }
