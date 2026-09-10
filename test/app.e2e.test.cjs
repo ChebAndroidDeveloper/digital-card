@@ -8,7 +8,7 @@ const { ProfileService } = require('../dist/profile/profile.service');
 const { configureHttpSecurity, RequestLimiter } = require('../dist/common/http-security');
 const { getIntrospectionQuery } = require('graphql');
 
-test('real HTTP GraphQL pipeline with mocked database', async (t) => {
+test('real HTTP GraphQL pipeline with mocked database (direct connection)', async (t) => {
   const previousEnv = process.env.NODE_ENV;
   const previousProxy = process.env.TRUSTED_PROXIES;
   process.env.NODE_ENV = 'production';
@@ -89,7 +89,7 @@ test('real HTTP GraphQL pipeline with mocked database', async (t) => {
       assert.equal(result.body.errors, undefined);
       assert.ok(result.body.data.__schema);
     });
-    await t.test('changing forwarded headers cannot bypass the HTTP limit', async () => {
+    await t.test('changing forwarded headers cannot bypass the HTTP limit without proxy', async () => {
       let limited;
       for (let i = 0; i < 101; i++) {
         const result = await request(app.getHttpServer()).post('/graphql')
@@ -99,6 +99,70 @@ test('real HTTP GraphQL pipeline with mocked database', async (t) => {
       assert.ok(limited);
       assert.equal(limited.body.errors[0].extensions.code, 'TOO_MANY_REQUESTS');
       assert.ok(Number(limited.headers['retry-after']) > 0);
+    });
+  } finally {
+    if (app) await app.close();
+    if (previousEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnv;
+    if (previousProxy === undefined) delete process.env.TRUSTED_PROXIES;
+    else process.env.TRUSTED_PROXIES = previousProxy;
+  }
+});
+
+test('trusted reverse proxy pipeline (production Nginx -> Docker -> API scheme with TRUSTED_PROXIES=1)', async (t) => {
+  const previousEnv = process.env.NODE_ENV;
+  const previousProxy = process.env.TRUSTED_PROXIES;
+  process.env.NODE_ENV = 'production';
+  process.env.TRUSTED_PROXIES = '1';
+
+  let app;
+  try {
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PrismaService).useValue({}).compile();
+    app = module.createNestApplication({ logger: false });
+    configureHttpSecurity(app);
+    await app.init();
+
+    await t.test('distinct clients behind proxy receive separate rate-limit buckets', async () => {
+      // Клиент А делает 50 запросов
+      for (let i = 0; i < 50; i++) {
+        const res = await request(app.getHttpServer()).post('/graphql')
+          .set('X-Forwarded-For', '203.0.113.10').send({ query: '{ __typename }' });
+        assert.equal(res.status, 200);
+      }
+
+      // Клиент Б делает 50 запросов (суммарно 100 через один сокет Nginx)
+      for (let i = 0; i < 50; i++) {
+        const res = await request(app.getHttpServer()).post('/graphql')
+          .set('X-Forwarded-For', '203.0.113.20').send({ query: '{ __typename }' });
+        assert.equal(res.status, 200);
+      }
+
+      // Ни один из них не превысил 100 запросов, оба активны и не заблокированы
+      const resA = await request(app.getHttpServer()).post('/graphql')
+        .set('X-Forwarded-For', '203.0.113.10').send({ query: '{ __typename }' });
+      assert.equal(resA.status, 200);
+
+      const resB = await request(app.getHttpServer()).post('/graphql')
+        .set('X-Forwarded-For', '203.0.113.20').send({ query: '{ __typename }' });
+      assert.equal(resB.status, 200);
+    });
+
+    await t.test('client cannot bypass rate limit by prepending fake forwarded headers behind trusted proxy', async () => {
+      // Реальный IP клиента зафиксирован Nginx как правый (203.0.113.99).
+      // Клиент пытается обмануть сервер, меняя IP слева: 'fake_ip, 203.0.113.99'
+      let limited;
+      for (let i = 0; i < 105; i++) {
+        const spoofedHeader = `198.51.100.${i}, 203.0.113.99`;
+        const res = await request(app.getHttpServer()).post('/graphql')
+          .set('X-Forwarded-For', spoofedHeader).send({ query: '{ __typename }' });
+        if (res.status === 429) {
+          limited = res;
+          break;
+        }
+      }
+      assert.ok(limited, 'Attacker should be rate-limited despite changing spoofed IP');
+      assert.equal(limited.body.errors[0].extensions.code, 'TOO_MANY_REQUESTS');
     });
   } finally {
     if (app) await app.close();
