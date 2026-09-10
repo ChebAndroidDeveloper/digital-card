@@ -3,6 +3,7 @@ export declare class ProfileService {
     private readonly prisma;
     private readonly cache;
     private readonly ttlMs;
+    private readonly queryTimeoutMs;
     constructor(prisma: PrismaService);
     private cached;
     findByLocale(locale?: string): Promise<{

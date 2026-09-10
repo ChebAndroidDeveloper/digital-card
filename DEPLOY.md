@@ -1,6 +1,6 @@
-# Deployment Guide
+# Deployment & Operations Guide
 
-This document outlines deployment procedures for both local development and production environments.
+This document outlines deployment procedures, maintenance, disaster recovery, and architecture details for both local development and production environments.
 
 ---
 
@@ -23,7 +23,7 @@ docker compose up -d --build
 ### What happens automatically:
 1. `postgres` starts and completes its healthcheck.
 2. `db-init` applies all pending Prisma migrations (`prisma migrate deploy`) and idempotently seeds profile data (`prisma db seed`), then exits cleanly.
-3. `api` starts up only after `db-init` successfully finishes, exposing the GraphQL endpoint on `http://localhost:3000/graphql`.
+3. `api` starts up only after `db-init` successfully finishes, exposing the GraphQL endpoint on `http://localhost:3000/graphql` and healthcheck on `http://localhost:3000/health`.
 
 To shut down:
 ```bash
@@ -51,8 +51,9 @@ npx prisma db seed
 npm run start:dev
 ```
 
-Run test suites:
+Run test and lint suites:
 ```bash
+npm run lint      # Code quality check (Oxlint)
 npm test          # Unit tests (Jest)
 npm run test:e2e  # Integration E2E tests (Node native test runner)
 ```
@@ -61,7 +62,7 @@ npm run test:e2e  # Integration E2E tests (Node native test runner)
 
 ## 3. Production Deployment (VPS / Reverse Proxy)
 
-In production environments, the container binds to `127.0.0.1:3000` and is reverse-proxied behind Nginx with SSL termination.
+In production environments, the container binds to `127.0.0.1:3000` and is reverse-proxied behind host Nginx with SSL termination.
 
 ### Reverse Proxy Configuration (Nginx snippet):
 ```nginx
@@ -81,11 +82,32 @@ server {
 }
 ```
 
-### Zero-Downtime Application Update:
-```bash
-git pull origin main
-docker compose up -d --build api
-```
+### Production Update Procedure (Short Switchover Window):
+
+In a single-container deployment, updates incur a minimal switchover window (~1-2 seconds) while the API container recreates. Both the `maintenance` image (for migrations/seed) and the `runner` image (for API) are rebuilt to ensure migrations and runtime code stay synchronized.
+
+1. **Pull and Deploy Updates (with Migrations & Seed):**
+   ```bash
+   cd /opt/digital-card
+   git pull origin main
+
+   # Builds both maintenance and runner stages, runs db-init migrations/seed, and restarts API
+   docker compose up -d --build
+   ```
+
+2. **Verify Deployment Health (Smoke Test):**
+   ```bash
+   curl --fail -s -X POST https://developerresume.webredirect.org/graphql \
+     -H "Content-Type: application/json" \
+     -d '{"query": "{ profile(locale: \"en\") { name } }"}'
+   ```
+
+3. **Rollback Strategy (in case of failure):**
+   ```bash
+   # Revert to the previous git commit and rebuild
+   git reset --hard HEAD@{1}
+   docker compose up -d --build
+   ```
 
 ---
 
@@ -98,3 +120,33 @@ When `prisma db seed` executes against an existing database, it performs **in-pl
 - Existing database `id` (UUIDs) are **strictly preserved**, preventing client-side cache invalidation (e.g. Apollo Client cache).
 - Added entities are inserted with new UUIDs.
 - Removed entities are cleaned up safely in an atomic database transaction.
+
+---
+
+## 5. Disaster Recovery & Backup Strategy
+
+### Recovery Objectives:
+- **RPO (Recovery Point Objective):** 0 minutes (The entire production resume data is declarative in Git under `prisma/seed.ts`).
+- **RTO (Recovery Time Objective):** < 3 minutes (Time to spin up fresh containers on any clean VPS via Docker Compose).
+
+### Database Backup & Restore:
+
+1. **Create Database Snapshot:**
+   ```bash
+   docker exec -t digital_card_db pg_dump -U postgres digital_card > backup.sql
+   ```
+
+2. **Restore Database from Snapshot:**
+   ```bash
+   cat backup.sql | docker exec -i digital_card_db psql -U postgres -d digital_card
+   ```
+
+3. **Complete Cold-Start Disaster Recovery:**
+   If the entire VPS is lost, provision a new server and run:
+   ```bash
+   git clone https://github.com/ChebAndroidDeveloper/digital-card.git /opt/digital-card
+   cd /opt/digital-card
+   cp .env.example .env
+   # Set POSTGRES_PASSWORD in .env
+   docker compose up -d --build
+   ```

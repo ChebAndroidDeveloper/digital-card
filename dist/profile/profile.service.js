@@ -16,6 +16,7 @@ let ProfileService = class ProfileService {
     prisma;
     cache = new Map();
     ttlMs = 60_000;
+    queryTimeoutMs = 5_000;
     constructor(prisma) {
         this.prisma = prisma;
     }
@@ -28,7 +29,17 @@ let ProfileService = class ProfileService {
             if (oldEntry.expiresAt <= now)
                 this.cache.delete(oldKey);
         }
-        const next = { value: Promise.resolve().then(load), expiresAt: Infinity };
+        const loadWithTimeout = Promise.race([
+            Promise.resolve().then(load),
+            new Promise((_, reject) => {
+                const timer = setTimeout(() => {
+                    reject(new Error(`Database query timed out after ${this.queryTimeoutMs}ms`));
+                }, this.queryTimeoutMs);
+                if (typeof timer.unref === 'function')
+                    timer.unref();
+            }),
+        ]);
+        const next = { value: loadWithTimeout, expiresAt: now + this.queryTimeoutMs };
         if (this.cache.size >= 256)
             return next.value;
         this.cache.set(key, next);

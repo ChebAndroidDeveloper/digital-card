@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProfileService {
   private readonly cache = new Map<string, { value: Promise<unknown>; expiresAt: number }>();
   private readonly ttlMs = 60_000;
+  private readonly queryTimeoutMs = 5_000;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -15,10 +16,23 @@ export class ProfileService {
     for (const [oldKey, oldEntry] of this.cache) {
       if (oldEntry.expiresAt <= now) this.cache.delete(oldKey);
     }
-    // Pending requests are cached immediately; failures can be retried.
-    const next = { value: Promise.resolve().then(load), expiresAt: Infinity };
+
+    // Ограничиваем время обращения к БД таймаутом, чтобы предотвратить зависание
+    const loadWithTimeout = Promise.race([
+      Promise.resolve().then(load),
+      new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Database query timed out after ${this.queryTimeoutMs}ms`));
+        }, this.queryTimeoutMs);
+        if (typeof timer.unref === 'function') timer.unref();
+      }),
+    ]);
+
+    // Вместо Infinity даём запросу ограниченный срок жизни (5 сек)
+    const next = { value: loadWithTimeout, expiresAt: now + this.queryTimeoutMs };
     if (this.cache.size >= 256) return next.value;
     this.cache.set(key, next);
+
     void next.value.then(
       () => { next.expiresAt = Date.now() + this.ttlMs; },
       () => { if (this.cache.get(key) === next) this.cache.delete(key); },
