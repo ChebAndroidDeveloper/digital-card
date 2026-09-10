@@ -3,41 +3,173 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function upsertProfile(locale: string, data: any) {
-  const existing = await prisma.profile.findUnique({
+  let profile = await prisma.profile.findUnique({
     where: { locale },
+    include: {
+      skills: true,
+      experience: true,
+      projects: true,
+      education: true,
+    },
   });
 
-  if (existing) {
-    console.log(`Updating existing profile [${locale}] with deterministic sortOrder...`);
-    await prisma.$transaction([
-      prisma.skill.deleteMany({ where: { profileId: existing.id } }),
-      prisma.experience.deleteMany({ where: { profileId: existing.id } }),
-      prisma.project.deleteMany({ where: { profileId: existing.id } }),
-      prisma.education.deleteMany({ where: { profileId: existing.id } }),
-      prisma.profile.update({
-        where: { id: existing.id },
-        data: {
-          name: data.name,
-          title: data.title,
-          description: data.description,
-          location: data.location,
-          phone: data.phone,
-          telegram: data.telegram,
-          githubUrl: data.githubUrl,
-          email: data.email,
-          skills: data.skills,
-          experience: data.experience,
-          projects: data.projects,
-          education: data.education,
-        },
-      }),
-    ]);
-    console.log(`Profile [${locale}] successfully updated.`);
-  } else {
+  if (!profile) {
     console.log(`Creating new profile [${locale}]...`);
-    await prisma.profile.create({ data });
+    profile = await prisma.profile.create({
+      data: {
+        locale: data.locale,
+        name: data.name,
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        phone: data.phone,
+        telegram: data.telegram,
+        githubUrl: data.githubUrl,
+        email: data.email,
+        skills: data.skills,
+        experience: data.experience,
+        projects: data.projects,
+        education: data.education,
+      },
+      include: {
+        skills: true,
+        experience: true,
+        projects: true,
+        education: true,
+      },
+    });
     console.log(`Profile [${locale}] successfully created.`);
+    return;
   }
+
+  console.log(`Updating existing profile [${locale}] preserving stable IDs...`);
+  await prisma.$transaction(async (tx) => {
+    // 1. Update Profile scalars
+    await tx.profile.update({
+      where: { id: profile.id },
+      data: {
+        name: data.name,
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        phone: data.phone,
+        telegram: data.telegram,
+        githubUrl: data.githubUrl,
+        email: data.email,
+      },
+    });
+
+    // 2. Upsert Skills by name (stable key)
+    const existingSkills = new Map(profile.skills.map((s) => [s.name, s]));
+    const currentSkillNames = new Set<string>();
+    for (const item of data.skills.create) {
+      currentSkillNames.add(item.name);
+      const existingItem = existingSkills.get(item.name);
+      if (existingItem) {
+        await tx.skill.update({
+          where: { id: existingItem.id },
+          data: { category: item.category },
+        });
+      } else {
+        await tx.skill.create({
+          data: { ...item, profileId: profile.id },
+        });
+      }
+    }
+    const removedSkillIds = profile.skills
+      .filter((s) => !currentSkillNames.has(s.name))
+      .map((s) => s.id);
+    if (removedSkillIds.length > 0) {
+      await tx.skill.deleteMany({ where: { id: { in: removedSkillIds } } });
+    }
+
+    // 3. Upsert Experience by company (stable key)
+    const existingExp = new Map(profile.experience.map((e) => [e.company, e]));
+    const currentExpCompanies = new Set<string>();
+    for (const item of data.experience.create) {
+      currentExpCompanies.add(item.company);
+      const existingItem = existingExp.get(item.company);
+      if (existingItem) {
+        await tx.experience.update({
+          where: { id: existingItem.id },
+          data: {
+            position: item.position,
+            period: item.period,
+            achievements: item.achievements,
+            sortOrder: item.sortOrder,
+          },
+        });
+      } else {
+        await tx.experience.create({
+          data: { ...item, profileId: profile.id },
+        });
+      }
+    }
+    const removedExpIds = profile.experience
+      .filter((e) => !currentExpCompanies.has(e.company))
+      .map((e) => e.id);
+    if (removedExpIds.length > 0) {
+      await tx.experience.deleteMany({ where: { id: { in: removedExpIds } } });
+    }
+
+    // 4. Upsert Projects by name (stable key)
+    const existingProjects = new Map(profile.projects.map((p) => [p.name, p]));
+    const currentProjectNames = new Set<string>();
+    for (const item of data.projects.create) {
+      currentProjectNames.add(item.name);
+      const existingItem = existingProjects.get(item.name);
+      if (existingItem) {
+        await tx.project.update({
+          where: { id: existingItem.id },
+          data: {
+            description: item.description,
+            url: item.url,
+            sortOrder: item.sortOrder,
+          },
+        });
+      } else {
+        await tx.project.create({
+          data: { ...item, profileId: profile.id },
+        });
+      }
+    }
+    const removedProjectIds = profile.projects
+      .filter((p) => !currentProjectNames.has(p.name))
+      .map((p) => p.id);
+    if (removedProjectIds.length > 0) {
+      await tx.project.deleteMany({ where: { id: { in: removedProjectIds } } });
+    }
+
+    // 5. Upsert Education by institution (stable key)
+    const existingEdu = new Map(profile.education.map((ed) => [ed.institution, ed]));
+    const currentEduInstitutions = new Set<string>();
+    for (const item of data.education.create) {
+      currentEduInstitutions.add(item.institution);
+      const existingItem = existingEdu.get(item.institution);
+      if (existingItem) {
+        await tx.education.update({
+          where: { id: existingItem.id },
+          data: {
+            year: item.year,
+            faculty: item.faculty,
+            sortOrder: item.sortOrder,
+          },
+        });
+      } else {
+        await tx.education.create({
+          data: { ...item, profileId: profile.id },
+        });
+      }
+    }
+    const removedEduIds = profile.education
+      .filter((ed) => !currentEduInstitutions.has(ed.institution))
+      .map((ed) => ed.id);
+    if (removedEduIds.length > 0) {
+      await tx.education.deleteMany({ where: { id: { in: removedEduIds } } });
+    }
+  });
+
+  console.log(`Profile [${locale}] successfully updated (all IDs preserved).`);
 }
 
 async function main() {

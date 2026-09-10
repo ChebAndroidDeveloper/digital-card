@@ -86,3 +86,15 @@ server {
 git pull origin main
 docker compose up -d --build api
 ```
+
+---
+
+## 4. Production Content Architecture (Resume as Code)
+
+In this project, `prisma/seed.ts` is the declarative **Single Source of Truth** for the production resume content (*Resume as Code*).
+
+### Non-Destructive Seed Updates:
+When `prisma db seed` executes against an existing database, it performs **in-place upserts by stable business keys** (`company`, `name`, `institution`):
+- Existing database `id` (UUIDs) are **strictly preserved**, preventing client-side cache invalidation (e.g. Apollo Client cache).
+- Added entities are inserted with new UUIDs.
+- Removed entities are cleaned up safely in an atomic database transaction.
